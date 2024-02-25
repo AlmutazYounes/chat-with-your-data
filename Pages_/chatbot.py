@@ -1,3 +1,4 @@
+import os
 from langchain.chains import ConversationChain
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain.chat_models import ChatOpenAI
@@ -7,6 +8,7 @@ from langchain.prompts import (
     ChatPromptTemplate,
     MessagesPlaceholder
 )
+import openai
 from streamlit_chat import message
 
 import config
@@ -19,7 +21,8 @@ class YourDataChat:
         model_used, is_api_key_valid, knowledge_base = YourDataChat.sidebar_elements()
         openai.api_key = os.environ['OPEN_AI_KEY']
         st.session_state.setdefault('cumulative_tokens', 0)
-        llm = ChatOpenAI(model_name=model_used, openai_api_key=os.environ['OPEN_AI_KEY'])
+        # llm = ChatOpenAI(model_name=model_used, openai_api_key=os.environ['OPEN_AI_KEY'])
+        llm = ChatOpenAI(model_name="llama2", openai_api_key="apiKey", openai_api_base="http://localhost:11434/v1")
 
         st.session_state.setdefault('buffer_memory', ConversationBufferWindowMemory(k=3, return_messages=True))
         system_msg_template = SystemMessagePromptTemplate.from_template(

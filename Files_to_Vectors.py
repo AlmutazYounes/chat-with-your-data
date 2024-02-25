@@ -5,6 +5,8 @@ from nucliadb_sdk import create_knowledge_box
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
+import config
+
 
 # Function to split documents from a directory
 def split_docs(directory, chunk_size=4300, chunk_overlap=300):
@@ -25,7 +27,9 @@ def split_docs(directory, chunk_size=4300, chunk_overlap=300):
     documents = loader.load()
 
     # Initialize a text splitter with specified parameters
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
     # Split the documents into chunks
     return text_splitter.split_documents(documents)
 
@@ -46,7 +50,7 @@ def embed_and_upload(Knowledge_base_name):
     # Create or retrieve a knowledge base
     my_kb = create_knowledge_box(Knowledge_base_name)
     # Initialize a sentence embedding model
-    model_bge = SentenceTransformer("BAAI/bge-base-en")
+    model_bge = SentenceTransformer(config.embedding_model)
 
     # Process each document chunk
     for i, file in enumerate(tqdm(files, desc="Processing files")):

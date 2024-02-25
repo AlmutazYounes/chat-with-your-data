@@ -31,7 +31,7 @@ def num_tokens_from_string(string: str, model_used: str):
 
 
 def find_match(input, turbo_16k, knowledge_base):
-    confidence_threshold = 0.85
+    confidence_threshold = 0.5
     reference_number = 4
     query_vectors = model.encode([input])
     my_kb = get_or_create(knowledge_base)
