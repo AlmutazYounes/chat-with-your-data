@@ -1,5 +1,5 @@
 import streamlit as st
-from nucliadb_sdk import get_or_create
+from nucliadb_sdk import NucliaDB
 from sentence_transformers import SentenceTransformer
 
 from config import *
@@ -48,7 +48,10 @@ class FileUploader:
         model = SentenceTransformer(embedding_model)
 
         query_vectors = model.encode([input])
-        my_kb = get_or_create(self.knowledge_base)
+        
+        # Create NucliaDB instance with the knowledge base slug
+        my_kb = NucliaDB(region="local", slug=self.knowledge_base)
+        
         results = my_kb.search(
             vector=query_vectors[0],
             vectorset="bge",

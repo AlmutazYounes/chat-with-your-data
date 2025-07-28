@@ -1,169 +1,107 @@
+import streamlit as st
+import os
 from langchain.chains import ConversationChain
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.prompts import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
     ChatPromptTemplate,
     MessagesPlaceholder
 )
-from streamlit_chat import message
-
-import config
-from utils import *
-
+import openai
+from utils import find_match, get_conversation_string, num_tokens_from_string
 
 class YourDataChat:
-    @staticmethod
-    def how_to_gpt():
-        model_used, is_api_key_valid, knowledge_base = YourDataChat.sidebar_elements()
-        openai.api_key = os.environ['OPEN_AI_KEY']
-        st.session_state.setdefault('cumulative_tokens', 0)
-        llm = ChatOpenAI(model_name=model_used, openai_api_key=os.environ['OPEN_AI_KEY'])
-
-        st.session_state.setdefault('buffer_memory', ConversationBufferWindowMemory(k=3, return_messages=True))
-        system_msg_template = SystemMessagePromptTemplate.from_template(
-            template=template_prompt)
-
-        human_msg_template = HumanMessagePromptTemplate.from_template(template="{input}")
-        prompt_template = ChatPromptTemplate.from_messages(
-            [system_msg_template, MessagesPlaceholder(variable_name="history"), human_msg_template])
-
-        conversation = ConversationChain(memory=st.session_state.buffer_memory, prompt=prompt_template, llm=llm,
-                                         verbose=True)
-
-        response_container = st.container()
-
-        query = YourDataChat.chat_input(is_api_key_valid)
-        response, context = YourDataChat.generate_response(conversation, query, model_used, knowledge_base)
-        YourDataChat.display_response(response_container, response)
-        YourDataChat.sidebar_references(context)
-        st.sidebar.button('Clear Chat History', on_click=YourDataChat.clear_text)
-
-    @staticmethod
-    def sidebar_elements():
-        with st.sidebar:
-            st.header("Settings")
-            is_api_key_valid = True
-            # add_OpenAI_api = st.text_input('Enter the OpenAI API token', type='password')
-            # is_api_key_valid = add_OpenAI_api.startswith('sk') and len(add_OpenAI_api) == 51
-            # if not is_api_key_valid:
-            #     st.warning('Please enter your credentials', icon='⚠️')
-            #
-            # else:
-            #     st.success('Proceed to entering your prompt message!', icon='👉')
-            model_used = st.selectbox("Choose a Model", ['gpt-3.5-turbo', 'gpt-3.5-turbo-16k'], key='select_model')
-        knowledge_base = st.sidebar.selectbox("Knowledge Base",
-                                              ["Group 1 Documents", "Group 2 Documents"])
-        knowledge_base = "knowledge_base1" if knowledge_base == "Group 1 Documents" else knowledge_base
-        knowledge_base = "knowledge_base2" if knowledge_base == "Group 2 Documents" else knowledge_base
-        return model_used, is_api_key_valid, knowledge_base
-
-    @staticmethod
-    def chat_input(is_api_key_valid):
-        if "messages" not in st.session_state:
-            st.session_state.messages = [{"role": "system", "content": config.template_prompt},
-                                         {"role": "assistant", "content": "How may I assist you today?"}]
-
-        if query := st.chat_input(disabled=not is_api_key_valid):
-            st.session_state.messages.append({"role": "user", "content": query})
-        return query
-
-    @staticmethod
-    def generate_response(conversation, query, model_used, knowledge_base):
-        response, context = None, None
-        if query:
-            with st.spinner("typing.."):
-                conversation_string = get_conversation_string()
-
-                use_16k = "16k" in model_used
-                context = find_match(query, use_16k, knowledge_base)
-
-                # Dictionary to track document numbers for each source
-                document_numbers = {}
-                formatted_texts = []
-
-                # Loop through the sources and texts to create the formatted string
-                for source, text in zip(context['source'], context['returned_text']):
-                    # If the source is not in the dictionary, assign a new number
-                    if source not in document_numbers:
-                        document_numbers[source] = len(document_numbers) + 1
-
-                    # Format the text with the source and document number
-                    formatted_texts.append(f'{document_numbers[source]}: {text}')
-
-                # Join the formatted texts with newline characters
-                formatted_texts_str = "\n".join(formatted_texts)
-
-                response = conversation.predict(
-                    input=f"Context:\n {formatted_texts_str} \n\n Query:\n{query}")
-
-                # Calculate tokens and estimate price
-                tokens_used = conversation_string + query + response
-                tokens_used, price = num_tokens_from_string(tokens_used, model_used)
-
-                st.session_state['cumulative_tokens'] += tokens_used
-                price_estimate = (st.session_state['cumulative_tokens'] / 1000) * price
-
-                # Display tokens and price estimate in the Streamlit app
-                st.sidebar.subheader("Estimated Tokens and Price")
-                st.sidebar.caption(f"🔖 Cumulative tokens used: {st.session_state['cumulative_tokens']}")
-                st.sidebar.caption(f"💰 Estimated total price: ${price_estimate:.5f}")
-
-                st.session_state.messages.append({"role": "assistant", "content": response})
-        return response, context
-
-    @staticmethod
-    def display_response(response_container, response):
-        with response_container:
-            for i, message_data in enumerate(st.session_state.messages):
-                if message_data["role"] == "assistant":
-                    message(message_data["content"], key=str(i), logo=os.getenv("ROBOT_LOGO"))
-                elif message_data["role"] == "user":
-                    message(message_data["content"], is_user=True, key=str(i) + '_user', logo=os.getenv("USER_LOGO"))
-
-    @staticmethod
-    def sidebar_references(context):
-        # Embedding the CSS
-        st.sidebar.markdown("""
-        <style>
-            .reference-div {
-                background-color: #f7f7f7; /* Light grey background */
-                border: 1px solid #e1e1e1; /* Grey border */
-                border-radius: 5px; /* Rounded corners */
-                padding: 10px; /* Padding around the text */
-                margin: 10px 0; /* Margin between each reference */
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
-            }
-            .pdf-text {
-                font-size: 14px; /* Font size for the text */
-                line-height: 1.4; /* Line spacing */
-                color: #333; /* Text color */
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
-        st.sidebar.subheader("References")
-        if context:
-            for text, score in zip(context['returned_text'], context['score']):
-                if score >= 0.4:
-                    st.sidebar.markdown(
-                        f"<div class='reference-div pdf-text'>{text}</div>",
-                        unsafe_allow_html=True
-                    )
-
-        st.sidebar.subheader("Document Names")
-        if context:
-            for doc_name, score in zip(context['source'], context['score']):
-                if score >= 0.85:
-                    st.sidebar.markdown(
-                        f"<div class='reference-div pdf-text'>{doc_name.split('/')[-1]}</div>",
-                        unsafe_allow_html=True
-                    )
-
-    @staticmethod
-    def clear_text():
-        st.session_state["text"] = ""
-        st.session_state.messages = [{"role": "system", "content": config.template_prompt},
-                                     {"role": "assistant", "content": "How may I assist you today?"}]
-        st.session_state.buffer_memory = ConversationBufferWindowMemory(k=3, return_messages=True)
+    def __init__(self):
+        self.model_name = "gpt-4o-mini"  # Using gpt-4o-mini as gpt-4.1-nano might not be available yet
+        self.api_key = os.environ.get('OPEN_AI_KEY')
+        
+    def get_response(self, user_input):
+        """Get a response from the chatbot for a given input"""
+        try:
+            if not self.api_key:
+                return "Please set your OpenAI API key in the settings to use the chat functionality."
+            
+            # Get context from knowledge base
+            context = self.get_context(user_input)
+            
+            # Generate response using OpenAI
+            response = self.generate_openai_response(user_input, context)
+            
+            return response
+        except Exception as e:
+            return f"Error: {str(e)}"
+    
+    def get_context(self, query):
+        """Get relevant context from the knowledge base"""
+        try:
+            # Use the simplified find_match function
+            results = find_match(query, top_k=4)
+            return results
+        except Exception as e:
+            st.error(f"Error getting context: {e}")
+            return {"returned_text": [], "source": [], "score": []}
+    
+    def generate_openai_response(self, user_input, context):
+        """Generate response using OpenAI API"""
+        try:
+            # Prepare context
+            context_text = ""
+            if context and context.get('returned_text'):
+                context_text = "\n\n".join(context['returned_text'])
+            
+            # Create system prompt
+            system_prompt = """You are a helpful AI assistant that answers questions based on the provided context from documents. 
+            
+            IMPORTANT INSTRUCTIONS:
+            1. If context is provided, analyze it carefully for ANY relevant information
+            2. Even if the context seems limited, try to extract useful insights from it
+            3. If the context contains figures, tables, or technical content, explain what they show
+            4. If you find ANY relevant information, provide a detailed answer based on it
+            5. Only say "I don't have information about this" if the context is completely irrelevant
+            6. Always mention that you're answering based on the uploaded documents when you use them
+            7. Be specific and cite information from the documents when possible
+            8. If the context shows figures or tables, explain their significance
+            
+            Always be helpful, accurate, and try to provide value even from limited context."""
+            
+            # Prepare messages
+            messages = [
+                {"role": "system", "content": system_prompt}
+            ]
+            
+            # Add context if available
+            if context_text:
+                messages.append({
+                    "role": "user", 
+                    "content": f"Context from uploaded documents:\n{context_text}\n\nQuestion: {user_input}"
+                })
+            else:
+                messages.append({
+                    "role": "user", 
+                    "content": f"Question: {user_input}\n\nNote: No relevant information found in uploaded documents."
+                })
+            
+            # Call OpenAI API using new format
+            client = openai.OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            return f"Error generating response: {str(e)}"
+    
+    def get_conversation_string(self):
+        """Get conversation history as string"""
+        conversation_string = ""
+        if "messages" in st.session_state:
+            for message_data in st.session_state.messages:
+                role = "Human" if message_data["role"] == "user" else "Bot"
+                conversation_string += f"{role}: {message_data['content']}\n"
+        return conversation_string
